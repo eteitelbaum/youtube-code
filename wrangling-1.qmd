@@ -1,0 +1,62 @@
+---
+title: "Wrangling in R Part 1"
+subtitle: "Working with Flat Files"
+format: html
+execute: 
+  echo: true
+  message: false
+  warning: false
+---
+
+For this code to run, you need to have it in an .RProj file with your messy data CSV file placed in a subfolder called "data." Alternatively you can ammend the file path to exclude the `data/` part of the path and just keep the CSV file in the same folder as the .RProj file.
+
+Run the code chunks from top to bottom. Click "Render" to render the document as an HGML file.
+
+## Step 1: Read the WB .csv file
+
+```{r}
+library(readr)
+library(dplyr)
+
+wb_data_messy <- read_csv("data/messy_wb_data.csv") # ammend based on your file path
+
+glimpse(wb_data_messy)
+```
+
+## Step 2: Reshape the data
+
+```{r}
+library(tidyr)
+wb_data <- wb_data_messy |> 
+  pivot_longer(
+    cols = `1974 [YR1974]`: `2021 [YR2021]`, 
+    names_to = "year", 
+    values_to = "flfp"
+  ) 
+
+glimpse(wb_data)
+```
+
+Step 3: Fix year and change variables to numeric
+
+```{r}
+wb_data <- wb_data |> 
+  mutate(year = substring(year, 1, 4)) |> 
+  mutate_at(c("year", "flfp"), as.numeric)
+
+glimpse(wb_data)
+```
+
+Step 4: Clean the variable names
+
+```{r}
+library(janitor)
+
+wb_data_clean <- wb_data |>  
+  clean_names() 
+
+glimpse(wb_data)
+```
+
+
+

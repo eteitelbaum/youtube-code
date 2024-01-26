@@ -1,0 +1,131 @@
+---
+title: "Wrangling in R Part 2"
+subtitle: "Working with APIs"
+format: html
+execute: 
+  echo: true
+  message: false
+  warning: false
+---
+
+Run the code chunks in order, from top to bottom. If you start with a code chunk in the middle it won't work. 
+
+Try modifying the code to see if you can download different indicators and country cases with the WB and V-Dem APIs. 
+
+Then try modifying some of the other parameters to see what happens. Click Render to render the document as an HTML file. 
+
+## Download Data from the WB API
+
+```{r}
+# Load packages
+library(wbstats) # for downloading WB data
+library(dplyr) # for selecting, renaming and mutating
+library(janitor) # for rounding
+
+# Store the list of indicators in an object
+indicators <- c("flfp" = "SL.TLF.CACT.FE.ZS", "women_rep" = "SG.GEN.PARL.ZS") 
+
+# Download the data  
+women_emp <- wb_data(indicators, mrv = 50) |> # download data for last 50 yrs
+  select(!iso2c) |> # drop the iso2c code which we won't be using
+  rename(year = date) |> # rename date to year 
+  mutate(
+    flfp = round_to_fraction(flfp, denominator = 100), # round to nearest 100th
+    women_rep = round_to_fraction(women_rep, denominator = 100) 
+  )
+
+# View the data
+glimpse(women_emp) 
+```
+
+## Filter observations, select and create new variables 
+
+```{r}
+# Load packages
+library(vdemdata) # to download V-Dem data
+
+# Download the data
+democracy <- vdem |> # download the V-Dem dataset
+  filter(year >= 1990)  |> # filter out years less than 1990
+  select(                  # select (and rename) these variables
+    country = country_name,     # the name before the = sign is the new name  
+    vdem_ctry_id = country_id,  # the name after the = sign is the old name
+    year, 
+    polyarchy = v2x_polyarchy, 
+    gdp_pc = e_gdppc, 
+    region = e_regionpol_6C
+    ) |>
+  mutate(
+    region = case_match(region, # replace the values in region with names
+                     1 ~ "Eastern Europe", 
+                     2 ~ "Latin America",  
+                     3 ~ "Middle East",   
+                     4 ~ "Africa", 
+                     5 ~ "The West", 
+                     6 ~ "Asia")
+                    # number on the left of the ~ is the V-Dem region code
+                    # we are changing the number to the country name on the right
+                    # of the equals sign
+  )
+
+# View the data
+glimpse(democracy)
+```
+
+## Add country code to democracy data frame
+
+```{r}
+# Load countrycode
+library(countrycode)
+
+# Create new iso3c variable
+democracy <- democracy |>    
+  mutate(iso3c = countrycode(sourcevar = vdem_ctry_id, # what we are converting
+        origin = "vdem",         # we are converting from vdem
+        destination = "wb"))  |> # and converting to the WB iso3c code 
+  relocate(iso3c, .after = vdem_ctry_id) # move iso3c 
+
+# View the data
+glimpse(democracy)
+```
+
+## Merge two datasets 
+
+For the `write_csv()` function to work you need to create a subfolder called `data` in your working directory for this and the next code chunk. 
+
+```{r}
+# Load readr
+library(readr)
+
+# Perform left join using common iso3c variable and year
+dem_women <- left_join(democracy, women_emp, by = c("iso3c", "year")) |> 
+  rename(country = country.x) |> # rename country.x
+  select(!country.y)             # crop country.y
+
+# Save as .csv for future use
+write_csv(dem_women, "data/dem_women.csv") # you need a data subfolder for this to work
+
+# View the data
+glimpse(dem_women)  
+```
+
+## Group, summarize and arrange (summarize by region)
+
+```{r}
+# group_by(), summarize() and arrange()
+dem_summary <- dem_women |> # save result as new object
+  group_by(region)  |> # group dem_women data by region
+  summarize(           # summarize following vars (by region)
+    polyarchy = mean(polyarchy, na.rm = TRUE), # calculate mean, remove NAs
+    gdp_pc = max(gdp_pc, na.rm = TRUE), 
+    flfp = min(flfp, na.rm = TRUE), 
+    women_rep = IQR(women_rep, na.rm = TRUE)
+  ) |> 
+  arrange(desc(polyarchy)) # arrange in descending order by polyarchy score
+
+# Save as .csv for future use
+write_csv(dem_summary, "data/dem_summary.csv") # you need a data subfolder for this to work
+
+# View the data
+glimpse(dem_summary)
+```
